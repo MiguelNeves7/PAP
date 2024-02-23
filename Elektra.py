@@ -1,27 +1,29 @@
 import pyttsx3
 from datetime import datetime, timedelta
 import speech_recognition as sr
-import wikipediaapi
-from urllib.parse import quote
-from googlesearch import search
+import openai
 import threading
 import time
-import pyaudio
 import pygame
 import requests
+from pyfirmata import Arduino
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
-import os
 
 # Inicializa o objeto de texto para fala
 texto_fala = pyttsx3.init()
 
-alarme_ativo = False
-hora_alarme = None
-escutando = True
+# Lista de tarefas
+lista_tarefas = []
+
+# Inicializa o reconhecimento de fala
 r = sr.Recognizer()
 
-lista_tarefas = []
+# Adicionado evento para suspender escuta
+evento_suspensao = threading.Event()
+
+# Chave da API do OpenAI
+openai.api_key = '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'
 
 # Configuração das credenciais do Spotify
 SPOTIPY_CLIENT_ID = '801f4822c6dc4084bbad503e3bba3853'
@@ -32,9 +34,6 @@ sp = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id=SPOTIPY_CLIENT_ID,
                                                client_secret=SPOTIPY_CLIENT_SECRET,
                                                redirect_uri="http://localhost:8888/callback",
                                                scope="user-library-read user-read-playback-state user-modify-playback-state"))
-
-# Adicionado evento para suspender escuta
-evento_suspensao = threading.Event()
 
 def imprimir_vozes_disponiveis():
     voices = texto_fala.getProperty('voices')
@@ -49,6 +48,16 @@ def falar(audio):
     texto_fala.setProperty('voice', voices[1].id)
     texto_fala.say(audio)
     texto_fala.runAndWait()
+
+def interagir_com_gpt3(pergunta):
+    # Fazer uma chamada para o modelo GPT-3.5 (Copilot)
+    resposta = openai.Completion.create(
+        engine="text-davinci-003",
+        prompt=pergunta,
+        max_tokens=150
+    )
+
+    return resposta.choices[0].text.strip()
 
 def tocar_alarme(caminho_do_som):
     pygame.mixer.init()
@@ -102,7 +111,6 @@ def tocar_musica_spotify(musica, artista):
     else:
         falar(f"Desculpe, não foi possível encontrar a música. Tente novamente.")
 
-
 def suspender_escuta():
     global escutando
     escutando = False
@@ -114,31 +122,6 @@ def ativar_escuta():
     escutando = True
     evento_suspensao.clear()
     print("Aguardando comando...")
-
-def pesquisar_internet():
-    falar("O que você gostaria de pesquisar na web?")
-    termo_pesquisa = microfone().lower()
-
-    if "wikipedia" in termo_pesquisa:
-        termo_pesquisa = termo_pesquisa.replace("wikipedia", "").strip()
-        wiki_wiki = wikipediaapi.Wikipedia("pt")
-        page_py = wiki_wiki.page(termo_pesquisa)
-
-        if page_py.exists():
-            # Obtém informações detalhadas da Wikipedia
-            resposta = f"{termo_pesquisa}: {page_py.text[:500]}"
-            falar(resposta)
-        else:
-            falar(f"Desculpe, não encontrei informações sobre {termo_pesquisa} na Wikipedia.")
-    else:
-        termo_pesquisa_url = quote(termo_pesquisa)
-        resultado_pesquisa_web = list(search(termo_pesquisa_url, num_results=1))
-
-        if resultado_pesquisa_web:
-            link = resultado_pesquisa_web[0]
-            falar(f"Aqui está o que encontrei: {link}")
-        else:
-            falar("Desculpe, não consegui encontrar informações para essa pergunta na web.")
 
 def tempo():
     agora = datetime.now()
@@ -203,13 +186,14 @@ def bem_vindo():
 
     falar("Elektra a sua disposição! Diga-me como posso ajudá-lo")
 
+
+
 # Thread para verificar tarefas e lembretes
 thread_tarefas = threading.Thread(target=verificar_tarefas, daemon=True)
 thread_tarefas.start()
 
 thread_lembrar_tarefas = threading.Thread(target=lembrar_tarefas, daemon=True)
 thread_lembrar_tarefas.start()
-
 
 if __name__ == "__main__":
     bem_vindo()
@@ -231,8 +215,6 @@ if __name__ == "__main__":
             data()
         elif 'hora' in comando:
             tempo()
-        elif 'pesquisa' in comando:
-            pesquisar_internet()
         elif 'definir alarme' in comando:
             falar("Em que hora quer definir o alarme?")
             hora_definida = microfone()
@@ -246,7 +228,13 @@ if __name__ == "__main__":
             ativar_escuta()
         elif 'até já' in comando:
             suspender_escuta()
-            print("Aguardando reativação...")  # Adicionado para indicar que está esperando reativação
+            print("Aguardando reativação...")  # Adicionado para indicar que está esperando reativação~
+        elif 'pesquisa' in comando:
+            falar("Oque você deseja pesquisar?")
+            pesquisar = microfone()
+            falar("Aguarde um momento!")
+            resposta_gpt3 = interagir_com_gpt3(pesquisar)
+            falar(f"Este é o resultado da pesquisa {resposta_gpt3}")
         elif 'definir tarefa' in comando:
             definir_tarefa()
         elif 'temperatura' in comando:
@@ -265,3 +253,4 @@ if __name__ == "__main__":
         elif 'desligar' in comando:
             falar("Programa encerrado. Até logo!")
             break
+        
