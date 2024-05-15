@@ -1,0 +1,4 @@
+adicionar calaculadora
+temporizador
+marcar encontros, calendario
+contar piada
